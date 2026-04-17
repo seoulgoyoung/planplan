@@ -1,7 +1,7 @@
 {
 "name": "Pop Archive Planner",
 "short_name": "PopLog",
-"start_url": "index.html",
+"start_url": "./",
 "display": "standalone",
 "background_color": "#FFF5F7",
 "theme_color": "#FF69B4",
@@ -9,7 +9,8 @@
 {
 "src": "https://www.google.com/search?q=https://cdn-icons-png.flaticon.com/512/5968/5968292.png",
 "sizes": "512x512",
-"type": "image/png"
+"type": "image/png",
+"purpose": "any"
 }
 ]
 }
