@@ -5,13 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Pop Archive Planner</title>
     
-    <!-- PWA 핵심 설정: 주소창 제거 -->
+    <!-- PWA 핵심 설정 -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="PopLog">
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/5968/5968292.png">
-    
-    <!-- manifest.json 연결 -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#FF69B4">
 
@@ -22,37 +20,17 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap');
-        
-        :root {
-            --sat: env(safe-area-inset-top);
-            --sab: env(safe-area-inset-bottom);
-        }
-
+        :root { --sat: env(safe-area-inset-top); --sab: env(safe-area-inset-bottom); }
         body { 
-            font-family: 'Noto Sans KR', sans-serif; 
-            background-color: #FFF5F7; 
-            margin: 0; 
-            padding: 0; 
-            overscroll-behavior-y: contain;
-            -webkit-tap-highlight-color: transparent;
-            -webkit-touch-callout: none;
-            user-select: none;
+            font-family: 'Noto Sans KR', sans-serif; background-color: #FFF5F7; margin: 0; padding: 0; 
+            overscroll-behavior-y: contain; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; user-select: none;
         }
-        
         .font-pop { font-family: 'Black Han Sans', sans-serif; font-style: italic; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .active-bounce:active { transform: scale(0.95); transition: transform 0.1s; }
         .neo-card { border: 4px solid #0F172A; box-shadow: 6px 6px 0px 0px rgba(15,23,42,1); background-color: white; border-radius: 2.5rem; }
         .neo-input { border: 2px solid #0F172A; border-radius: 1rem; padding: 0.5rem 1rem; outline: none; transition: all 0.2s; -webkit-user-select: text; user-select: text; }
-        
-        #root { 
-            height: 100vh; 
-            display: flex; 
-            flex-direction: column; 
-            overflow: hidden;
-            padding-top: var(--sat);
-            padding-bottom: var(--sab);
-        }
+        #root { height: 100vh; display: flex; flex-direction: column; overflow: hidden; padding-top: var(--sat); padding-bottom: var(--sab); }
     </style>
 </head>
 <body>
@@ -61,10 +39,10 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
 
-        // 서비스 워커 등록 (앱 설치 가능하게 함)
+        // 서비스 워커 등록
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('sw.js').then(() => console.log('SW OK')).catch(() => console.log('SW Fail'));
+                navigator.serviceWorker.register('sw.js').catch(err => console.log(err));
             });
         }
 
@@ -95,22 +73,27 @@
             const [notToDo, setNotToDo] = useState(() => load('pop_nottodo', ["자기 전 스마트폰 금지 📵"]));
             const [plannerData, setPlannerData] = useState(() => load('pop_plannerdata', {})); 
             const [workoutLinks, setWorkoutLinks] = useState(() => load('pop_workoutlinks', []));
+            const [bucketList, setBucketList] = useState(() => load('pop_bucketlist', []));
             const [xp, setXp] = useState(() => load('pop_xp', 0));
             const [level, setLevel] = useState(() => load('pop_level', 1));
             
-            // 입력 상태
+            // 입력 임시 상태
             const [newRoutineText, setNewRoutineText] = useState('');
             const [newRoutineType, setNewRoutineType] = useState('daily');
             const [subInputs, setSubInputs] = useState({});
+            const [newNotTo, setNewNotTo] = useState('');
+            const [newTodo, setNewTodo] = useState('');
+            const [newBucket, setNewBucket] = useState('');
 
             useEffect(() => {
                 localStorage.setItem('pop_routines', JSON.stringify(routines));
                 localStorage.setItem('pop_nottodo', JSON.stringify(notToDo));
                 localStorage.setItem('pop_plannerdata', JSON.stringify(plannerData));
                 localStorage.setItem('pop_workoutlinks', JSON.stringify(workoutLinks));
+                localStorage.setItem('pop_bucketlist', JSON.stringify(bucketList));
                 localStorage.setItem('pop_xp', JSON.stringify(xp));
                 localStorage.setItem('pop_level', JSON.stringify(level));
-            }, [routines, notToDo, plannerData, workoutLinks, xp, level]);
+            }, [routines, notToDo, plannerData, workoutLinks, bucketList, xp, level]);
 
             useEffect(() => {
                 window.addEventListener('beforeinstallprompt', (e) => {
@@ -127,6 +110,34 @@
                 } else {
                     alert("크롬 메뉴(점3개)의 '앱 설치'를 이용해 주세요!");
                 }
+            };
+
+            const handleExport = () => {
+                const data = { routines, notToDo, plannerData, workoutLinks, bucketList, xp, level };
+                const blob = new Blob([JSON.stringify(data)], {type: "application/json"});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `pop_planner_backup_${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+            };
+
+            const handleImport = (e) => {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const data = JSON.parse(event.target.result);
+                        setRoutines(data.routines || []);
+                        setNotToDo(data.notToDo || []);
+                        setPlannerData(data.plannerData || {});
+                        setWorkoutLinks(data.workoutLinks || []);
+                        setBucketList(data.bucketList || []);
+                        setXp(data.xp || 0);
+                        setLevel(data.level || 1);
+                        alert('데이터를 성공적으로 불러왔습니다!');
+                    } catch(err) { alert('올바른 백업 파일이 아닙니다.'); }
+                };
+                reader.readAsText(e.target.files[0]);
             };
 
             const currentDay = useMemo(() => plannerData[selectedDate] || { todos: [], routineChecks: {}, isOff: false, offReason: "" }, [plannerData, selectedDate]);
@@ -173,13 +184,14 @@
 
             return (
                 <div className="flex flex-col h-full overflow-hidden">
+                    {/* Header */}
                     <header className="px-6 pt-12 pb-2 shrink-0 bg-white/70 backdrop-blur-md sticky top-0 z-50 border-b border-slate-100 flex justify-between items-center">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 bg-[#FF69B4] border-2 border-slate-900 rounded-2xl flex items-center justify-center rotate-6 shadow-[3px_3px_0px_0px_black]">
                                 <Icon name="Archive" size={20} color="white" />
                             </div>
                             <div>
-                                <h1 className="text-lg font-pop text-[#FF1493] tracking-tighter uppercase leading-none italic">Pop Archive</h1>
+                                <h1 className="text-lg font-pop text-[#FF1493] tracking-tighter uppercase italic">Pop Archive</h1>
                                 <div className="flex items-center gap-1.5 mt-1">
                                     <span className="text-[10px] font-black bg-[#ADFF2F] px-1.5 rounded border border-slate-900">LV.{level}</span>
                                     <div className="w-24 h-1.5 bg-white border border-slate-900 rounded-full overflow-hidden">
@@ -192,6 +204,7 @@
                     </header>
 
                     <main className="flex-1 overflow-y-auto px-6 pb-40 no-scrollbar">
+                        {/* 탭 1: 루틴 */}
                         {activeTab === 'routine' && (
                             <div className="space-y-6 py-4 animate-in slide-in-from-bottom-4">
                                 <div className="flex items-center justify-between bg-white p-3 neo-card">
@@ -215,7 +228,7 @@
                                             {routines.filter(r => r.type === type).map(r => (
                                                 <div key={r.id} className="neo-card p-6 bg-white space-y-5 animate-in fade-in">
                                                     <div className="flex justify-between items-center"><h4 className="text-md font-black text-slate-800 tracking-tighter">{r.text}</h4><button onClick={() => setRoutines(routines.filter(x => x.id !== r.id))} className="text-slate-200 hover:text-red-500 transition-colors"><Icon name="Trash2" size={18}/></button></div>
-                                                    <div className="space-y-4 pl-1">
+                                                    <div className="space-y-4">
                                                         {(r.subTasks || []).map(sub => {
                                                             const ck = currentDay.routineChecks?.[`${r.id}_sid_${sub.id}`] || { checked: false, detail: "" };
                                                             return (
@@ -239,32 +252,43 @@
                                         <div className="flex gap-2"><input type="text" id="newroutine" placeholder="새 루틴 명칭..." className="flex-1 neo-input text-sm" value={newRoutineText} onChange={e => setNewRoutineText(e.target.value)} /><button onClick={() => { if(!newRoutineText) return; setRoutines([...routines, { id: Date.now(), text: newRoutineText, type: newRoutineType, subTasks: [] }]); setNewRoutineText(''); gainXp(10); }} className="bg-[#ADFF2F] border-2 border-slate-900 p-3 rounded-2xl active-bounce shadow-[3px_3px_0 0 black]"><Icon name="Plus" size={20}/></button></div>
                                     </div>
                                 </div>
+                                <section className="pt-4 pb-20"><h3 className="text-xs font-black uppercase tracking-widest text-red-400 ml-4 mb-3 flex items-center gap-2"><Icon name="Ban" size={14}/> Not-to-do</h3><div className="grid grid-cols-1 gap-2">{notToDo.map((nt, idx) => (<div key={idx} className="bg-white border-2 border-slate-900 p-4 rounded-2xl flex justify-between items-center shadow-[3px_3px_0px_0px_black]"><span className="text-[11px] font-bold text-slate-700">{nt}</span><button onClick={() => setNotToDo(notToDo.filter((_, i) => i !== idx))} className="text-slate-300 hover:text-red-400"><Icon name="X" size={16}/></button></div>))}<div className="flex gap-2 pt-2"><input type="text" id="newnottodo" placeholder="참아야 할 일..." className="flex-1 neo-input text-xs" onKeyDown={e => { if(e.key === 'Enter') { setNotToDo([...notToDo, e.target.value]); e.target.value = ''; } }}/><button onClick={() => { const inp = document.getElementById('newnottodo'); if(!inp.value) return; setNotToDo([...notToDo, inp.value]); inp.value = ''; }} className="bg-red-400 p-2.5 rounded-xl border-2 border-slate-900 text-white active-bounce shadow-[3px_3px_0 0 black]"><Icon name="Plus" size={18}/></button></div></div></section>
                             </div>
                         )}
 
+                        {/* 탭 2: 아카이브 */}
                         {activeTab === 'stats' && (
                             <div className="py-6 space-y-6 animate-in zoom-in">
-                                <div className="neo-card p-10 bg-white text-center"><Icon name="Library" size={56} className="text-[#ADFF2F] mb-4 mx-auto" /><h2 className="text-3xl font-pop text-[#0F172A] uppercase italic leading-none">Archive</h2><p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.3em] mt-3 underline decoration-[#ADFF2F] decoration-4 mb-6 italic">Daily Footprints</p></div>
+                                <div className="neo-card p-10 bg-white text-center">
+                                    <Icon name="Library" size={56} className="text-[#ADFF2F] mb-4 mx-auto" />
+                                    <h2 className="text-3xl font-pop text-[#0F172A] uppercase leading-none">History</h2>
+                                    <div className="flex gap-3 justify-center mt-6">
+                                        <button onClick={handleExport} className="bg-[#ADFF2F] border-2 border-slate-900 px-4 py-2 rounded-xl text-[10px] font-black uppercase shadow-[2px_2px_0 0 black] active-bounce">Backup</button>
+                                        <label className="bg-white border-2 border-slate-900 px-4 py-2 rounded-xl text-[10px] font-black uppercase shadow-[2px_2px_0 0 black] active-bounce cursor-pointer">
+                                            Load <input type="file" className="hidden" accept=".json" onChange={handleImport} />
+                                        </label>
+                                    </div>
+                                </div>
                                 <div className="space-y-8">
                                     {Object.keys(plannerData).sort().reverse().map(date => {
                                         const archive = getArchiveLog(date);
                                         if (!archive) return null;
                                         return (
-                                            <div key={date} className="neo-card p-6 bg-white relative overflow-hidden">
+                                            <div key={date} className="neo-card p-6 bg-white relative overflow-hidden animate-in slide-in-from-bottom-2">
                                                 <div className="flex justify-between items-center mb-6 border-b-4 border-[#F1F5F9] pb-3"><span className="font-pop text-lg text-[#FF69B4] italic uppercase">{date}</span><Icon name={archive.type === 'OFF' ? "Coffee" : "Award"} size={22} color={archive.type === 'OFF' ? "#94A3B8" : "#ADFF2F"} /></div>
-                                                {archive.type === 'OFF' ? (<div className="p-6 bg-slate-100 rounded-3xl border-4 border-slate-900 border-dashed text-center font-black text-slate-400 uppercase italic">-- ROUTINE OFF --</div>) : (<div className="space-y-4">{archive.logs.map((log, i) => (<div key={i} className="bg-slate-50/50 p-3 rounded-2xl border border-slate-100 flex flex-col gap-1"><div className="flex items-center gap-2 font-black"><div className="w-1.5 h-1.5 bg-[#ADFF2F] rounded-full" /><span className="text-[10px] text-[#FF69B4] italic uppercase tracking-tighter">{log.category}</span><span className="text-xs text-slate-800">{log.task}</span></div>{log.detail && <div className="ml-3 pl-4 border-l-4 border-[#FF69B4] text-[11px] font-bold text-slate-500 italic">{log.detail}</div>}</div>))}</div>)}
+                                                {archive.type === 'OFF' ? (<div className="p-6 bg-slate-100 rounded-3xl border-4 border-slate-900 border-dashed text-center font-black text-slate-400 italic">-- ROUTINE OFF: {archive.reason} --</div>) : (<div className="space-y-4">{archive.logs.map((log, i) => (<div key={i} className="bg-slate-50/50 p-3 rounded-2xl border border-slate-100 flex flex-col gap-1"><div className="flex items-center gap-2 font-black"><div className="w-1.5 h-1.5 bg-[#ADFF2F] rounded-full" /><span className="text-[10px] text-[#FF69B4] italic uppercase tracking-tighter">{log.category}</span><span className="text-xs text-slate-800">{log.task}</span></div>{log.detail && <div className="ml-3 pl-4 border-l-4 border-[#FF69B4] text-[11px] font-bold text-slate-500 italic">{log.detail}</div>}</div>))}</div>)}
                                             </div>
                                         );
                                     })}
-                                    {Object.keys(plannerData).length === 0 && <div className="text-center py-20 opacity-20"><Icon name="History" size={80} className="mx-auto" /><p className="font-black mt-4 uppercase">No logs yet</p></div>}
                                 </div>
                             </div>
                         )}
 
+                        {/* 탭 3: 링크 허브 */}
                         {activeTab === 'hub' && (
                             <div className="py-4 space-y-10 animate-in slide-in-from-right-4">
                                 <section className="neo-card p-6 bg-[#E1F5FE]">
-                                    <h3 className="text-md font-pop uppercase italic text-[#0288D1] mb-6 flex items-center gap-3"><Icon name="PlayCircle" size={24}/> Hub</h3>
+                                    <h3 className="text-md font-pop uppercase italic text-[#0288D1] mb-6 flex items-center gap-3"><Icon name="PlayCircle" size={24}/> Study & Workout</h3>
                                     <div className="space-y-4 mb-8">
                                         {workoutLinks.map(link => (<div key={link.id} className="bg-white p-4 rounded-3xl border-2 border-slate-900 flex items-center justify-between shadow-[5px_5px_0 0 black]"><p className="text-xs font-black truncate flex-1 pr-4 text-slate-700">{link.title}</p><div className="flex gap-3 shrink-0"><a href={link.url} target="_blank" rel="noopener noreferrer" className="w-10 h-10 bg-[#0288D1] border-2 border-slate-900 rounded-full flex items-center justify-center text-white active-bounce"><Icon name="PlayCircle" size={20}/></a><button onClick={() => setWorkoutLinks(workoutLinks.filter(x => x.id !== link.id))} className="text-slate-300 hover:text-red-500"><Icon name="Trash2" size={20}/></button></div></div>))}
                                     </div>
@@ -275,13 +299,51 @@
                             </div>
                         )}
 
+                        {/* 탭 4: 할 일 및 이슈 (복구된 섹션) */}
                         {activeTab === 'task' && (
                             <div className="py-4 space-y-12 animate-in slide-in-from-left-4">
-                                <section className="neo-card p-8 bg-white"><h3 className="text-md font-pop uppercase italic text-blue-500 mb-8 flex items-center gap-3"><Icon name="CheckSquare" size={24}/> Todo</h3><div className="flex gap-2 p-3 bg-slate-50 rounded-2xl border-4 border-slate-900 shadow-inner"><input type="text" id="newtodo" placeholder="할 일 적기" className="flex-1 bg-transparent text-sm font-black px-2 outline-none text-slate-900" onKeyDown={e => { if(e.key === 'Enter') { updateDayData({ todos: [...currentDay.todos, {id: Date.now(), text: e.target.value, completed: false}]}); e.target.value = ''; } }}/><button onClick={() => { const inp = document.getElementById('newtodo'); if(!inp.value) return; updateDayData({ todos: [...currentDay.todos, {id: Date.now(), text: inp.value, completed: false}]}); inp.value = ''; }} className="bg-[#FFEB3B] border-2 border-slate-900 p-3 rounded-xl active-bounce shadow-[3px_3px_0 0 black]"><Icon name="Plus" size={26}/></button></div></section>
+                                <section className="neo-card p-8 bg-white">
+                                    <h3 className="text-md font-pop uppercase italic text-blue-500 mb-8 flex items-center gap-3"><Icon name="CheckSquare" size={24}/> Today's Todo</h3>
+                                    <div className="space-y-5 mb-8">{(currentDay.todos || []).map(todo => (<div key={todo.id} className="flex items-center justify-between group"><div className="flex items-center gap-4"><button onClick={() => updateDayData({ todos: currentDay.todos.map(t => t.id === todo.id ? { ...t, completed: !t.completed } : t) })} className={`active-bounce transition-all ${todo.completed ? 'text-blue-500' : 'text-slate-200'}`}>{todo.completed ? <Icon name="CheckCircle" size={36} /> : <div className="w-8 h-8 rounded-2xl border-4 border-slate-100" />}</button><span className={`text-sm font-black ${todo.completed ? 'line-through text-slate-300 italic' : 'text-slate-700 underline decoration-[#ADFF2F] decoration-4'}`}>{todo.text}</span></div><button onClick={() => updateDayData({ todos: currentDay.todos.filter(t => t.id !== todo.id) })} className="text-slate-100 hover:text-red-500 active-bounce"><Icon name="Trash2" size={22}/></button></div>))}</div>
+                                    <div className="flex gap-2 p-3 bg-slate-50 rounded-2xl border-4 border-slate-900 shadow-inner"><input type="text" id="newtodo" placeholder="할 일 적기" className="flex-1 bg-transparent text-sm font-black px-2 outline-none text-slate-900" onKeyDown={e => { if(e.key === 'Enter') { updateDayData({ todos: [...currentDay.todos, {id: Date.now(), text: e.target.value, completed: false}]}); e.target.value = ''; } }}/><button onClick={() => { const inp = document.getElementById('newtodo'); if(!inp.value) return; updateDayData({ todos: [...currentDay.todos, {id: Date.now(), text: inp.value, completed: false}]}); inp.value = ''; }} className="bg-[#FFEB3B] border-2 border-slate-900 p-3 rounded-xl active-bounce shadow-[3px_3px_0 0 black]"><Icon name="Plus" size={26}/></button></div>
+                                </section>
+
+                                {/* 🔥 복구된 이슈 및 버킷리스트 섹션 🔥 */}
+                                <section className="space-y-8 pb-10">
+                                    <h3 className="text-md font-pop uppercase italic text-purple-600 ml-4 flex items-center gap-3"><Icon name="Star" size={24}/> Monthly Issues & Bucket</h3>
+                                    <div className="space-y-4 mb-10">
+                                        {bucketList.filter(b => !b.completed).map(b => (
+                                            <div key={b.id} className="neo-card p-6 flex justify-between items-center bg-gradient-to-r from-white to-purple-50/30 animate-in slide-in-from-right-2">
+                                                <span className="font-black text-slate-700 text-sm leading-tight pr-4">{b.text}</span>
+                                                <button onClick={() => { setBucketList(bucketList.map(item => item.id === b.id ? { ...item, completed: true, date: new Date().toISOString().split('T')[0] } : item)); gainXp(50); }} className="bg-[#ADFF2F] border-2 border-slate-900 px-6 py-2.5 rounded-full text-[10px] font-black uppercase shadow-[4px_4px_0 0 black] active-bounce shrink-0 text-slate-900">Done!</button>
+                                            </div>
+                                        ))}
+                                        <div className="flex gap-3 pt-4">
+                                            <input type="text" placeholder="페스티벌 등 특별한 일정..." className="flex-1 neo-input text-sm" value={newBucket} onChange={e => setNewBucket(e.target.value)} onKeyDown={e => { if(e.key === 'Enter' && newBucket) { setBucketList([...bucketList, {id: Date.now(), text: newBucket, completed: false}]); setNewBucket(''); }}} />
+                                            <button onClick={() => { if(!newBucket) return; setBucketList([...bucketList, {id: Date.now(), text: newBucket, completed: false}]); setNewBucket(''); }} className="bg-purple-500 p-3.5 rounded-2xl border-2 border-slate-900 shadow-[4px_4px_0 0 black] text-white active-bounce"><Icon name="Plus" size={24}/></button>
+                                        </div>
+                                    </div>
+
+                                    {/* 명예의 전당 (완료된 이슈) */}
+                                    <div className="bg-slate-900 p-8 rounded-[3.5rem] border-4 border-slate-900 shadow-[6px_6px_0 0 rgba(0,0,0,0.1)]">
+                                        <div className="flex items-center gap-3 mb-8"><Icon name="Trophy" size={28} color="#FFD700" className="animate-bounce" /><span className="text-xs font-black uppercase text-white tracking-[0.3em]">Honor Archive</span></div>
+                                        <div className="grid grid-cols-2 gap-5">
+                                            {bucketList.filter(b => b.completed).map(b => (
+                                                <div key={b.id} className="bg-white border-4 border-slate-900 p-5 rounded-[2.5rem] flex flex-col items-center shadow-[4px_4px_0 0 rgba(0,0,0,0.2)] text-center animate-in zoom-in rotate-2">
+                                                    <Icon name="Heart" size={18} className="text-red-400 fill-red-400 mb-2" />
+                                                    <span className="text-[11px] font-black text-slate-700 leading-snug">{b.text}</span>
+                                                    <div className="mt-3 text-[8px] font-black text-slate-300 uppercase">-- {b.date} ACHIEVED --</div>
+                                                </div>
+                                            ))}
+                                            {bucketList.filter(b => b.completed).length === 0 && <p className="col-span-2 text-center text-[10px] font-black text-slate-500 py-8 uppercase tracking-widest italic opacity-50">Empty Archive</p>}
+                                        </div>
+                                    </div>
+                                </section>
                             </div>
                         )}
                     </main>
 
+                    {/* Bottom Nav */}
                     <nav className="fixed bottom-0 left-0 right-0 bg-white border-t-4 border-slate-900 px-6 pb-12 pt-3 flex justify-between items-center z-50">
                         <TabButton id="routine" icon="Layout" label="Routine" color="text-[#FF69B4]" />
                         <TabButton id="stats" icon="Archive" label="Archive" color="text-[#ADFF2F]" />
