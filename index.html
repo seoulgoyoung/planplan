@@ -53,7 +53,8 @@
 
         const App = () => {
             const [activeTab, setActiveTab] = useState('routine');
-            const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+            // 시작 날짜를 4월 20일로 고정
+            const [selectedDate, setSelectedDate] = useState('2024-04-20');
 
             // --- 데이터 저장/로드 ---
             const load = (key, initial) => {
@@ -67,15 +68,11 @@
             const [workoutLinks, setWorkoutLinks] = useState(() => load('pop_workoutlinks', []));
             const [xp, setXp] = useState(() => load('pop_xp', 0));
             const [level, setLevel] = useState(() => load('pop_level', 1));
-            
-            // 전역 투두 리스트 (날짜 상관없이 쌓임)
             const [globalTodos, setGlobalTodos] = useState(() => load('pop_global_todos', []));
             
             const [newRoutineText, setNewRoutineText] = useState('');
             const [newRoutineType, setNewRoutineType] = useState('daily');
-            const [newTodo, setNewTodo] = useState('');
 
-            // 데이터 자동 저장
             useEffect(() => {
                 localStorage.setItem('pop_routines', JSON.stringify(routines));
                 localStorage.setItem('pop_nottodo', JSON.stringify(notToDo));
@@ -127,7 +124,6 @@
                 return logs.length > 0 ? { type: 'DONE', logs } : null;
             };
 
-            // 완료된 항목이 아래로 가게 정렬된 투두 리스트
             const sortedTodos = useMemo(() => {
                 return [...globalTodos].sort((a, b) => Number(a.completed) - Number(b.completed));
             }, [globalTodos]);
@@ -203,7 +199,7 @@
                                         <div className="flex gap-2"><input type="text" id="newroutine" placeholder="새로운 루틴..." className="flex-1 neo-input text-sm" value={newRoutineText} onChange={e => setNewRoutineText(e.target.value)} /><button onClick={() => { if(!newRoutineText) return; setRoutines([...routines, { id: Date.now(), text: newRoutineText, type: newRoutineType, subTasks: [] }]); setNewRoutineText(''); gainXp(10); }} className="bg-[#ADFF2F] border-2 border-slate-900 p-3 rounded-2xl active-bounce shadow-[3px_3px_0 0 black]"><Icon name="Plus" size={20}/></button></div>
                                     </div>
                                 </div>
-                                <section className="pt-4 pb-20"><h3 className="text-xs font-black uppercase tracking-widest text-red-400 ml-4 mb-3 flex items-center gap-2"><Icon name="Ban" size={14}/> 포기할 행동</h3><div className="grid grid-cols-1 gap-2">{notToDo.map((nt, idx) => (<div key={idx} className="bg-white border-2 border-slate-900 p-4 rounded-2xl flex justify-between items-center shadow-[3px_3px_0px_0px_black]"><span className="text-[11px] font-bold text-slate-700">{nt}</span><button onClick={() => setNotToDo(notToDo.filter((_, i) => i !== idx))} className="text-slate-200"><Icon name="X" size={16}/></button></div>))}<div className="flex gap-2 pt-2"><input type="text" id="ntin" placeholder="그만둘 습관..." className="flex-1 neo-input text-xs" /><button onClick={() => { const inp = document.getElementById('ntin'); if(!inp.value) return; setNotToDo([...notToDo, inp.value]); inp.value = ''; }} className="bg-red-400 p-2.5 rounded-xl border-2 border-slate-900 text-white active-bounce"><Icon name="Plus" size={18}/></button></div></div></section>
+                                <section className="pt-4 pb-20"><h3 className="text-xs font-black uppercase tracking-widest text-red-400 ml-4 mb-3 flex items-center gap-2"><Icon name="Ban" size={14}/> 포기할 행동</h3><div className="grid grid-cols-1 gap-2">{notToDo.map((nt, idx) => (<div key={idx} className="bg-white border-2 border-slate-900 p-4 rounded-2xl flex justify-between items-center shadow-[3px_3px_0px_0px_black]"><span className="text-[11px] font-bold text-slate-700">{nt}</span><button onClick={() => setNotToDo(notToDo.filter((_, i) => i !== idx))} className="text-slate-300 hover:text-red-400"><Icon name="X" size={16}/></button></div>))}<div className="flex gap-2 pt-2"><input type="text" id="ntin" placeholder="그만둘 습관..." className="flex-1 neo-input text-xs" /><button onClick={() => { const inp = document.getElementById('ntin'); if(!inp.value) return; setNotToDo([...notToDo, inp.value]); inp.value = ''; }} className="bg-red-400 p-2.5 rounded-xl border-2 border-slate-900 text-white active-bounce"><Icon name="Plus" size={18}/></button></div></div></section>
                             </div>
                         )}
 
@@ -257,14 +253,7 @@
                                                     </button>
                                                     <span className={`text-sm font-black flex-1 ${todo.completed ? 'line-through text-slate-300 italic' : 'text-slate-700 decoration-[#ADFF2F] decoration-4'}`}>{todo.text}</span>
                                                 </div>
-                                                
-                                                {/* 삭제 버튼 추가 */}
-                                                <button 
-                                                    onClick={() => setGlobalTodos(globalTodos.filter(t => t.id !== todo.id))}
-                                                    className="p-2 text-slate-100 hover:text-red-400 active-bounce transition-colors"
-                                                >
-                                                    <Icon name="Trash2" size={20}/>
-                                                </button>
+                                                <button onClick={() => setGlobalTodos(globalTodos.filter(t => t.id !== todo.id))} className="p-2 text-slate-100 hover:text-red-400 active-bounce"><Icon name="Trash2" size={20}/></button>
                                             </div>
                                         ))}
                                         {globalTodos.length === 0 && (
