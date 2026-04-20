@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -53,8 +54,10 @@
 
         const App = () => {
             const [activeTab, setActiveTab] = useState('routine');
-            // 시작 날짜를 4월 20일로 고정
-            const [selectedDate, setSelectedDate] = useState('2024-04-20');
+            
+            // 날짜 자동 변경: 오늘 날짜를 기본값으로 설정
+            const getTodayStr = () => new Date().toISOString().split('T')[0];
+            const [selectedDate, setSelectedDate] = useState(getTodayStr());
 
             // --- 데이터 저장/로드 ---
             const load = (key, initial) => {
@@ -69,7 +72,8 @@
             const [xp, setXp] = useState(() => load('pop_xp', 0));
             const [level, setLevel] = useState(() => load('pop_level', 1));
             const [globalTodos, setGlobalTodos] = useState(() => load('pop_global_todos', []));
-            
+
+            const [openMemos, setOpenMemos] = useState({});
             const [newRoutineText, setNewRoutineText] = useState('');
             const [newRoutineType, setNewRoutineType] = useState('daily');
 
@@ -83,26 +87,6 @@
                 localStorage.setItem('pop_global_todos', JSON.stringify(globalTodos));
             }, [routines, notToDo, plannerData, workoutLinks, xp, level, globalTodos]);
 
-            const handleExport = () => {
-                const data = { routines, notToDo, plannerData, workoutLinks, xp, level, globalTodos };
-                const blob = new Blob([JSON.stringify(data)], {type: "application/json"});
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.href = url; a.download = `pop_log_backup.json`; a.click();
-            };
-
-            const handleImport = (e) => {
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    const data = JSON.parse(event.target.result);
-                    setRoutines(data.routines || []); setNotToDo(data.notToDo || []);
-                    setPlannerData(data.plannerData || {}); setWorkoutLinks(data.workoutLinks || []);
-                    setXp(data.xp || 0); setLevel(data.level || 1);
-                    setGlobalTodos(data.globalTodos || []);
-                    alert('복구가 완료되었습니다! ✨');
-                };
-                reader.readAsText(e.target.files[0]);
-            };
-
             const currentDay = useMemo(() => plannerData[selectedDate] || { routineChecks: {}, isOff: false, offReason: "" }, [plannerData, selectedDate]);
             const updateDayData = (updatedFields) => { setPlannerData(prev => ({ ...prev, [selectedDate]: { ...currentDay, ...updatedFields } })); };
             const gainXp = (amount) => { setXp(prev => { const next = prev + amount; if (next >= 100) { setLevel(l => l + 1); return next - 100; } return next; }); };
@@ -114,6 +98,10 @@
                 updateDayData({ routineChecks: { ...currentDay.routineChecks, [key]: { ...existing, checked: !existing.checked } } });
             };
 
+            const toggleMemoInput = (key) => {
+                setOpenMemos(prev => ({ ...prev, [key]: !prev[key] }));
+            };
+
             const getArchiveLog = (date) => {
                 const day = plannerData[date]; if (!day) return null;
                 const logs = []; if (day.isOff) return { type: 'OFF', reason: day.offReason };
@@ -121,12 +109,41 @@
                     const ck = day.routineChecks?.[`${r.id}_sid_${s.id}`];
                     if (ck?.checked) logs.push({ category: r.text.slice(0,4), task: s.text, detail: ck.detail });
                 }); });
-                return logs.length > 0 ? { type: 'DONE', logs } : null;
+                return (logs.length > 0 || day.isOff) ? { type: day.isOff ? 'OFF' : 'DONE', logs } : null;
             };
+
+            const archiveDates = useMemo(() => {
+                return Object.keys(plannerData).filter(date => getArchiveLog(date)).sort().reverse();
+            }, [plannerData, routines]);
 
             const sortedTodos = useMemo(() => {
                 return [...globalTodos].sort((a, b) => Number(a.completed) - Number(b.completed));
             }, [globalTodos]);
+
+            const handleExport = () => {
+                const data = { routines, notToDo, plannerData, workoutLinks, xp, level, globalTodos };
+                const blob = new Blob([JSON.stringify(data)], {type: "application/json"});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = `pop_backup.json`; a.click();
+            };
+
+            const handleImport = (e) => {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const data = JSON.parse(event.target.result);
+                        setRoutines(data.routines || []);
+                        setNotToDo(data.notToDo || []);
+                        setPlannerData(data.plannerData || {});
+                        setWorkoutLinks(data.workoutLinks || []);
+                        setXp(data.xp || 0);
+                        setLevel(data.level || 1);
+                        setGlobalTodos(data.globalTodos || []);
+                        alert('데이터를 성공적으로 불러왔습니다! ✨');
+                    } catch(e) { alert('불러오기 실패: 파일 형식이 잘못되었습니다.'); }
+                };
+                reader.readAsText(e.target.files[0]);
+            };
 
             const TabButton = ({ id, icon, label, color }) => (
                 <button onClick={() => setActiveTab(id)} className={`flex flex-col items-center flex-1 py-3 transition-all active-bounce ${activeTab === id ? color : 'text-slate-400'}`}>
@@ -177,14 +194,22 @@
                                                     <div className="flex justify-between items-center"><h4 className="text-md font-black text-slate-800">{r.text}</h4><button onClick={() => setRoutines(routines.filter(x => x.id !== r.id))} className="text-slate-200"><Icon name="Trash2" size={16}/></button></div>
                                                     <div className="space-y-3">
                                                         {(r.subTasks || []).map(sub => {
-                                                            const ck = currentDay.routineChecks?.[`${r.id}_sid_${sub.id}`] || { checked: false, detail: "" };
+                                                            const memoKey = `${r.id}_sid_${sub.id}`;
+                                                            const ck = currentDay.routineChecks?.[memoKey] || { checked: false, detail: "" };
+                                                            const isMemoOpen = openMemos[memoKey];
                                                             return (
                                                                 <div key={sub.id} className="space-y-2 group">
                                                                     <div className="flex items-center justify-between">
-                                                                        <div className="flex items-center gap-3"><button onClick={() => toggleCheck(r.id, sub.id)} className={`active-bounce ${ck.checked ? 'text-[#ADFF2F]' : 'text-slate-200'}`}>{ck.checked ? <Icon name="CheckCircle" size={28} /> : <div className="w-6 h-6 rounded-xl border-4 border-slate-100" />}</button><span className={`text-sm font-bold ${ck.checked ? 'line-through text-slate-300' : 'text-slate-700'}`}>{sub.text}</span></div>
+                                                                        <div className="flex items-center gap-3">
+                                                                            <button onClick={() => toggleCheck(r.id, sub.id)} className={`active-bounce ${ck.checked ? 'text-[#ADFF2F]' : 'text-slate-200'}`}>{ck.checked ? <Icon name="CheckCircle" size={28} /> : <div className="w-6 h-6 rounded-xl border-4 border-slate-100" />}</button>
+                                                                            <span className={`text-sm font-bold ${ck.checked ? 'line-through text-slate-300' : 'text-slate-700'}`}>{sub.text}</span>
+                                                                            {ck.checked && <button onClick={() => toggleMemoInput(memoKey)} className={`p-1.5 rounded-lg ${isMemoOpen ? 'bg-slate-900 text-white' : 'text-[#FF69B4]'}`}><Icon name="PenTool" size={14}/></button>}
+                                                                        </div>
                                                                         <button onClick={() => setRoutines(routines.map(rt => rt.id === r.id ? {...rt, subTasks: rt.subTasks.filter(s => s.id !== sub.id)} : rt))} className="opacity-0 group-hover:opacity-100 text-slate-200"><Icon name="X" size={14}/></button>
                                                                     </div>
-                                                                    {ck.checked && <div className="ml-9 flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-100"><Icon name="PenTool" size={12} className="text-[#FF69B4]" /><input type="text" placeholder="메모..." className="flex-1 bg-transparent text-[11px] font-bold text-slate-500 outline-none" value={ck.detail || ""} onChange={(e) => updateDayData({ routineChecks: { ...currentDay.routineChecks, [`${r.id}_sid_${sub.id}`]: { ...ck, detail: e.target.value } } })} /></div>}
+                                                                    {ck.checked && isMemoOpen && (
+                                                                        <div className="ml-9 animate-in slide-in-from-top-2"><div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border-2 border-slate-900 shadow-[3px_3px_0_0_#FF69B4]"><input type="text" placeholder="메모 입력..." className="flex-1 bg-transparent text-[11px] font-bold text-slate-500 outline-none" value={ck.detail || ""} onChange={(e) => updateDayData({ routineChecks: { ...currentDay.routineChecks, [memoKey]: { ...ck, detail: e.target.value } } })} /></div></div>
+                                                                    )}
                                                                 </div>
                                                             );
                                                         })}
@@ -195,32 +220,45 @@
                                         </section>
                                     ))}
                                     <div className="neo-card p-6 border-dashed bg-[#F8FAFC]">
-                                        <div className="flex gap-2 mb-3">{['daily', 'weekly', 'monthly'].map(t => (<button key={t} onClick={() => setNewRoutineType(t)} className={`flex-1 py-1.5 rounded-xl text-[9px] font-black uppercase border-2 transition-all ${newRoutineType === t ? 'bg-[#FF69B4] text-white border-slate-900 shadow-[3px_3px_0 0 black]' : 'bg-white text-slate-400 border-slate-200'}`}>{t}</button>))}</div>
+                                        <div className="flex gap-2 mb-3">{['daily', 'weekly', 'monthly'].map(t => (<button key={t} onClick={() => setNewRoutineType(t)} className={`flex-1 py-1.5 rounded-xl text-[9px] font-black uppercase border-2 transition-all ${newRoutineType === t ? 'bg-[#FF69B4] text-white border-slate-900' : 'bg-white text-slate-400'}`}>{t}</button>))}</div>
                                         <div className="flex gap-2"><input type="text" id="newroutine" placeholder="새로운 루틴..." className="flex-1 neo-input text-sm" value={newRoutineText} onChange={e => setNewRoutineText(e.target.value)} /><button onClick={() => { if(!newRoutineText) return; setRoutines([...routines, { id: Date.now(), text: newRoutineText, type: newRoutineType, subTasks: [] }]); setNewRoutineText(''); gainXp(10); }} className="bg-[#ADFF2F] border-2 border-slate-900 p-3 rounded-2xl active-bounce shadow-[3px_3px_0 0 black]"><Icon name="Plus" size={20}/></button></div>
                                     </div>
                                 </div>
-                                <section className="pt-4 pb-20"><h3 className="text-xs font-black uppercase tracking-widest text-red-400 ml-4 mb-3 flex items-center gap-2"><Icon name="Ban" size={14}/> 포기할 행동</h3><div className="grid grid-cols-1 gap-2">{notToDo.map((nt, idx) => (<div key={idx} className="bg-white border-2 border-slate-900 p-4 rounded-2xl flex justify-between items-center shadow-[3px_3px_0px_0px_black]"><span className="text-[11px] font-bold text-slate-700">{nt}</span><button onClick={() => setNotToDo(notToDo.filter((_, i) => i !== idx))} className="text-slate-300 hover:text-red-400"><Icon name="X" size={16}/></button></div>))}<div className="flex gap-2 pt-2"><input type="text" id="ntin" placeholder="그만둘 습관..." className="flex-1 neo-input text-xs" /><button onClick={() => { const inp = document.getElementById('ntin'); if(!inp.value) return; setNotToDo([...notToDo, inp.value]); inp.value = ''; }} className="bg-red-400 p-2.5 rounded-xl border-2 border-slate-900 text-white active-bounce"><Icon name="Plus" size={18}/></button></div></div></section>
+                                <section className="pt-4 pb-20"><h3 className="text-xs font-black uppercase tracking-widest text-red-400 ml-4 mb-3 flex items-center gap-2"><Icon name="Ban" size={14}/> 포기할 행동</h3><div className="grid grid-cols-1 gap-2">{notToDo.map((nt, idx) => (<div key={idx} className="bg-white border-2 border-slate-900 p-4 rounded-2xl flex justify-between items-center shadow-[3px_3px_0px_0px_black]"><span className="text-[11px] font-bold text-slate-700">{nt}</span><button onClick={() => setNotToDo(notToDo.filter((_, i) => i !== idx))} className="text-slate-200"><Icon name="X" size={16}/></button></div>))}<div className="flex gap-2 pt-2"><input type="text" id="ntin" placeholder="그만둘 습관..." className="flex-1 neo-input text-xs" /><button onClick={() => { const inp = document.getElementById('ntin'); if(!inp.value) return; setNotToDo([...notToDo, inp.value]); inp.value = ''; }} className="bg-red-400 p-2.5 rounded-xl border-2 border-slate-900 text-white active-bounce"><Icon name="Plus" size={18}/></button></div></div></section>
                             </div>
                         )}
 
                         {activeTab === 'archive' && (
                             <div className="py-6 space-y-6 animate-in zoom-in">
-                                <div className="neo-card p-10 bg-white text-center"><Icon name="Library" size={56} className="text-[#ADFF2F] mb-4 mx-auto" /><h2 className="text-3xl font-pop text-[#0F172A] uppercase leading-none italic">기록소</h2>
-                                <div className="flex gap-3 justify-center mt-6">
-                                    <button onClick={handleExport} className="bg-[#ADFF2F] border-2 border-slate-900 px-4 py-2 rounded-xl text-[10px] font-black uppercase active-bounce">백업</button>
-                                    <label className="bg-white border-2 border-slate-900 px-4 py-2 rounded-xl text-[10px] font-black uppercase active-bounce cursor-pointer">불러오기<input type="file" className="hidden" accept=".json" onChange={handleImport} /></label>
-                                </div>
+                                <div className="neo-card p-10 bg-white text-center">
+                                    <Icon name="Library" size={56} className="text-[#ADFF2F] mb-4 mx-auto" />
+                                    <h2 className="text-3xl font-pop text-[#0F172A] uppercase leading-none italic">기록소</h2>
+                                    <div className="flex gap-3 justify-center mt-6">
+                                        <button onClick={handleExport} className="bg-[#ADFF2F] border-2 border-slate-900 px-4 py-2 rounded-xl text-[10px] font-black uppercase active-bounce shadow-[2px_2px_0_0_black]">백업</button>
+                                        <label className="bg-white border-2 border-slate-900 px-4 py-2 rounded-xl text-[10px] font-black uppercase active-bounce shadow-[2px_2px_0_0_black] cursor-pointer">불러오기<input type="file" className="hidden" accept=".json" onChange={handleImport} /></label>
+                                    </div>
                                 </div>
                                 <div className="space-y-8">
-                                    {Object.keys(plannerData).sort().reverse().map(date => {
-                                        const archive = getArchiveLog(date); if (!archive) return null;
+                                    {archiveDates.length > 0 ? archiveDates.map(date => {
+                                        const archive = getArchiveLog(date);
                                         return (
                                             <div key={date} className="neo-card p-6 bg-white relative overflow-hidden animate-in slide-in-from-bottom-2">
                                                 <div className="flex justify-between items-center mb-6 border-b-4 border-[#F1F5F9] pb-3"><span className="font-pop text-lg text-[#FF69B4] italic uppercase">{date}</span><Icon name={archive.type === 'OFF' ? "Coffee" : "Award"} size={22} color={archive.type === 'OFF' ? "#94A3B8" : "#ADFF2F"} /></div>
-                                                {archive.type === 'OFF' ? (<div className="p-6 bg-slate-100 rounded-3xl border-4 border-slate-900 border-dashed text-center font-black text-slate-400 italic">-- ROUTINE OFF: {archive.reason} --</div>) : (<div className="space-y-4">{archive.logs.map((log, i) => (<div key={i} className="bg-slate-50/50 p-3 rounded-2xl border border-slate-100 flex flex-col gap-1"><div className="flex items-center gap-2 font-black"><div className="w-1.5 h-1.5 bg-[#ADFF2F] rounded-full" /><span className="text-[10px] text-[#FF69B4] italic uppercase tracking-tighter">{log.category}</span><span className="text-xs text-slate-800">{log.task}</span></div>{log.detail && <div className="ml-3 pl-4 border-l-4 border-[#FF69B4] text-[11px] font-bold text-slate-500 italic">{log.detail}</div>}</div>))}</div>)}
+                                                {archive.type === 'OFF' ? (<div className="p-6 bg-slate-100 rounded-3xl border-4 border-slate-900 border-dashed text-center font-black text-slate-400 italic">-- ROUTINE OFF: {archive.reason || '휴식'} --</div>) : (
+                                                    <div className="space-y-4">
+                                                        {archive.logs.map((log, i) => (
+                                                            <div key={i} className="bg-slate-50/50 p-3 rounded-2xl border border-slate-100 flex flex-col gap-1"><div className="flex items-center gap-2 font-black"><div className="w-1.5 h-1.5 bg-[#ADFF2F] rounded-full" /><span className="text-[10px] text-[#FF69B4] italic uppercase tracking-tighter">{log.category}</span><span className="text-xs text-slate-800">{log.task}</span></div>{log.detail && <div className="ml-3 pl-4 border-l-4 border-[#FF69B4] text-[11px] font-bold text-slate-500 italic">{log.detail}</div>}</div>
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </div>
                                         );
-                                    })}
+                                    }) : (
+                                        <div className="text-center py-20 opacity-20 flex flex-col items-center gap-4">
+                                            <Icon name="Inbox" size={60} />
+                                            <p className="font-black uppercase tracking-widest text-xs">아직 기록된 루틴이 없습니다.</p>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -239,51 +277,18 @@
                             <div className="py-4 space-y-8 animate-in slide-in-from-left-4">
                                 <section className="neo-card p-8 bg-white min-h-[400px] flex flex-col">
                                     <h3 className="text-md font-pop uppercase italic text-blue-500 mb-8 flex items-center gap-3"><Icon name="CheckSquare" size={24}/> 누적 투두 리스트</h3>
-                                    
                                     <div className="space-y-5 mb-8 flex-1">
                                         {sortedTodos.map(todo => (
                                             <div key={todo.id} className="flex items-center justify-between group animate-in fade-in slide-in-from-right-2">
                                                 <div className="flex items-center gap-4 flex-1">
-                                                    <button onClick={() => {
-                                                        const updated = globalTodos.map(t => t.id === todo.id ? { ...t, completed: !t.completed } : t);
-                                                        if (!todo.completed) gainXp(15);
-                                                        setGlobalTodos(updated);
-                                                    }} className={`active-bounce transition-all ${todo.completed ? 'text-blue-500' : 'text-slate-200'}`}>
-                                                        {todo.completed ? <Icon name="CheckCircle" size={36} /> : <div className="w-8 h-8 rounded-2xl border-4 border-slate-100" />}
-                                                    </button>
+                                                    <button onClick={() => { const updated = globalTodos.map(t => t.id === todo.id ? { ...t, completed: !t.completed } : t); if (!todo.completed) gainXp(15); setGlobalTodos(updated); }} className={`active-bounce transition-all ${todo.completed ? 'text-blue-500' : 'text-slate-200'}`}>{todo.completed ? <Icon name="CheckCircle" size={36} /> : <div className="w-8 h-8 rounded-2xl border-4 border-slate-100" />}</button>
                                                     <span className={`text-sm font-black flex-1 ${todo.completed ? 'line-through text-slate-300 italic' : 'text-slate-700 decoration-[#ADFF2F] decoration-4'}`}>{todo.text}</span>
                                                 </div>
                                                 <button onClick={() => setGlobalTodos(globalTodos.filter(t => t.id !== todo.id))} className="p-2 text-slate-100 hover:text-red-400 active-bounce"><Icon name="Trash2" size={20}/></button>
                                             </div>
                                         ))}
-                                        {globalTodos.length === 0 && (
-                                            <div className="text-center py-20 opacity-20 flex flex-col items-center gap-3">
-                                                <Icon name="ClipboardList" size={60} />
-                                                <p className="font-black uppercase tracking-widest text-xs">목록이 비어있어요</p>
-                                            </div>
-                                        )}
                                     </div>
-
-                                    <div className="flex gap-2 p-3 bg-slate-50 rounded-2xl border-4 border-slate-900 shadow-inner sticky bottom-0">
-                                        <input 
-                                            type="text" 
-                                            id="tdin" 
-                                            placeholder="새로운 할 일 적기..." 
-                                            className="flex-1 bg-transparent text-sm font-black px-2 outline-none text-slate-900"
-                                            onKeyDown={e => {
-                                                if(e.key === 'Enter' && e.target.value.trim()) {
-                                                    setGlobalTodos([...globalTodos, {id: Date.now(), text: e.target.value, completed: false}]);
-                                                    e.target.value = '';
-                                                }
-                                            }}
-                                        />
-                                        <button onClick={() => { 
-                                            const inp = document.getElementById('tdin');
-                                            if(!inp.value.trim()) return; 
-                                            setGlobalTodos([...globalTodos, {id: Date.now(), text: inp.value, completed: false}]); 
-                                            inp.value = ''; 
-                                        }} className="bg-[#FFEB3B] border-2 border-slate-900 p-3 rounded-xl active-bounce shadow-[3px_3px_0 0 black]"><Icon name="Plus" size={26}/></button>
-                                    </div>
+                                    <div className="flex gap-2 p-3 bg-slate-50 rounded-2xl border-4 border-slate-900 shadow-inner sticky bottom-0"><input type="text" id="tdin" placeholder="할 일 추가..." className="flex-1 bg-transparent text-sm font-black px-2 outline-none text-slate-900" onKeyDown={e => { if(e.key === 'Enter' && e.target.value.trim()) { setGlobalTodos([...globalTodos, {id: Date.now(), text: e.target.value, completed: false}]); e.target.value = ''; } }} /><button onClick={() => { const inp = document.getElementById('tdin'); if(!inp.value.trim()) return; setGlobalTodos([...globalTodos, {id: Date.now(), text: inp.value, completed: false}]); inp.value = ''; }} className="bg-[#FFEB3B] border-2 border-slate-900 p-3 rounded-xl active-bounce shadow-[3px_3px_0 0 black]"><Icon name="Plus" size={26}/></button></div>
                                 </section>
                             </div>
                         )}
@@ -305,3 +310,5 @@
     </script>
 </body>
 </html>
+
+```
