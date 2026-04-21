@@ -9,7 +9,6 @@
     <!-- PWA 및 앱 설정 -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="PopLog">
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/5968/5968292.png">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#FF69B4">
@@ -55,17 +54,17 @@
         const App = () => {
             const [activeTab, setActiveTab] = useState('routine');
             
-            // 🌟 [수정] 앱 실행 시 현재 날짜(YYYY-MM-DD)를 자동으로 가져와서 설정합니다.
-            const getTodayDate = () => {
+            // 실시간 오늘 날짜 자동 설정
+            const getTodayStr = () => {
                 const now = new Date();
-                const offset = now.getTimezoneOffset() * 60000;
-                const localISOTime = (new Date(now - offset)).toISOString().split('T')[0];
-                return localISOTime;
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
             };
+            const [selectedDate, setSelectedDate] = useState(getTodayStr());
 
-            const [selectedDate, setSelectedDate] = useState(getTodayDate());
-
-            // --- 데이터 로드/저장 로직 ---
+            // --- 데이터 로드 ---
             const load = (key, initial) => {
                 const saved = localStorage.getItem(key);
                 return saved ? JSON.parse(saved) : initial;
@@ -82,7 +81,14 @@
             const [openMemos, setOpenMemos] = useState({});
             const [newRoutineText, setNewRoutineText] = useState('');
             const [newRoutineType, setNewRoutineType] = useState('daily');
+            
+            // --- 편집 모드 상태 ---
+            const [editingId, setEditingId] = useState(null); // 현재 수정 중인 항목의 ID
 
+            // 앱 켤 때마다 실제 날짜로 동기화
+            useEffect(() => { setSelectedDate(getTodayStr()); }, []);
+
+            // 데이터 자동 저장
             useEffect(() => {
                 localStorage.setItem('pop_routines', JSON.stringify(routines));
                 localStorage.setItem('pop_nottodo', JSON.stringify(notToDo));
@@ -104,9 +110,7 @@
                 updateDayData({ routineChecks: { ...currentDay.routineChecks, [key]: { ...existing, checked: !existing.checked } } });
             };
 
-            const toggleMemoInput = (key) => {
-                setOpenMemos(prev => ({ ...prev, [key]: !prev[key] }));
-            };
+            const toggleMemoInput = (key) => { setOpenMemos(prev => ({ ...prev, [key]: !prev[key] })); };
 
             const getArchiveLog = (date) => {
                 const day = plannerData[date]; if (!day) return null;
@@ -118,35 +122,23 @@
                 return (logs.length > 0 || day.isOff) ? { type: day.isOff ? 'OFF' : 'DONE', logs } : null;
             };
 
-            const archiveDates = useMemo(() => {
-                return Object.keys(plannerData).filter(date => getArchiveLog(date)).sort().reverse();
-            }, [plannerData, routines]);
-
-            const sortedTodos = useMemo(() => {
-                return [...globalTodos].sort((a, b) => Number(a.completed) - Number(b.completed));
-            }, [globalTodos]);
+            const archiveDates = useMemo(() => Object.keys(plannerData).filter(date => getArchiveLog(date)).sort().reverse(), [plannerData, routines]);
+            const sortedTodos = useMemo(() => [...globalTodos].sort((a, b) => Number(a.completed) - Number(b.completed)), [globalTodos]);
 
             const handleExport = () => {
                 const data = { routines, notToDo, plannerData, workoutLinks, xp, level, globalTodos };
                 const blob = new Blob([JSON.stringify(data)], {type: "application/json"});
                 const url = URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.href = url; a.download = `pop_backup.json`; a.click();
+                const a = document.createElement('a'); a.href = url; a.download = `pop_log_backup.json`; a.click();
             };
 
             const handleImport = (e) => {
                 const reader = new FileReader();
                 reader.onload = (event) => {
-                    try {
-                        const data = JSON.parse(event.target.result);
-                        setRoutines(data.routines || []);
-                        setNotToDo(data.notToDo || []);
-                        setPlannerData(data.plannerData || {});
-                        setWorkoutLinks(data.workoutLinks || []);
-                        setXp(data.xp || 0);
-                        setLevel(data.level || 1);
-                        setGlobalTodos(data.globalTodos || []);
-                        alert('데이터를 성공적으로 불러왔습니다! ✨');
-                    } catch(e) { alert('불러오기 실패: 파일 형식이 잘못되었습니다.'); }
+                    const data = JSON.parse(event.target.result);
+                    setRoutines(data.routines); setNotToDo(data.notToDo); setPlannerData(data.plannerData); 
+                    setWorkoutLinks(data.workoutLinks); setXp(data.xp); setLevel(data.level); setGlobalTodos(data.globalTodos);
+                    alert('복구 성공! ✨');
                 };
                 reader.readAsText(e.target.files[0]);
             };
@@ -171,9 +163,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div className="px-3 py-1 bg-white border-2 border-slate-900 rounded-full text-[9px] font-black uppercase shadow-[2px_2px_0_0_black]">
-                            {activeTab === 'routine' ? '루틴' : activeTab === 'archive' ? '기록' : activeTab === 'hub' ? '링크' : '투두'}
-                        </div>
+                        <div className="px-3 py-1 bg-white border-2 border-slate-900 rounded-full text-[9px] font-black uppercase shadow-[2px_2px_0_0_black]">{activeTab}</div>
                     </header>
 
                     <main className="flex-1 overflow-y-auto px-6 pb-40 no-scrollbar">
@@ -197,7 +187,17 @@
                                             <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 ml-4 flex items-center gap-2"><div className={`w-2 h-2 rounded-full ${type === 'daily' ? 'bg-[#FF69B4]' : type === 'weekly' ? 'bg-[#ADFF2F]' : 'bg-[#2196F3]'}`} />{type}</h3>
                                             {routines.filter(r => r.type === type).map(r => (
                                                 <div key={r.id} className="neo-card p-6 bg-white space-y-4">
-                                                    <div className="flex justify-between items-center"><h4 className="text-md font-black text-slate-800">{r.text}</h4><button onClick={() => setRoutines(routines.filter(x => x.id !== r.id))} className="text-slate-200"><Icon name="Trash2" size={16}/></button></div>
+                                                    <div className="flex justify-between items-center">
+                                                        {editingId === r.id ? (
+                                                            <input autoFocus className="flex-1 text-md font-black neo-input" value={r.text} onChange={e => setRoutines(routines.map(rt => rt.id === r.id ? {...rt, text: e.target.value} : rt))} onBlur={() => setEditingId(null)} />
+                                                        ) : (
+                                                            <h4 className="text-md font-black text-slate-800">{r.text}</h4>
+                                                        )}
+                                                        <div className="flex gap-2">
+                                                            <button onClick={() => setEditingId(editingId === r.id ? null : r.id)} className="text-slate-200 hover:text-blue-400"><Icon name="Edit3" size={16}/></button>
+                                                            <button onClick={() => setRoutines(routines.filter(x => x.id !== r.id))} className="text-slate-200 hover:text-red-400"><Icon name="Trash2" size={16}/></button>
+                                                        </div>
+                                                    </div>
                                                     <div className="space-y-3">
                                                         {(r.subTasks || []).map(sub => {
                                                             const memoKey = `${r.id}_sid_${sub.id}`;
@@ -206,12 +206,19 @@
                                                             return (
                                                                 <div key={sub.id} className="space-y-2 group">
                                                                     <div className="flex items-center justify-between">
-                                                                        <div className="flex items-center gap-3">
+                                                                        <div className="flex items-center gap-3 flex-1">
                                                                             <button onClick={() => toggleCheck(r.id, sub.id)} className={`active-bounce ${ck.checked ? 'text-[#ADFF2F]' : 'text-slate-200'}`}>{ck.checked ? <Icon name="CheckCircle" size={28} /> : <div className="w-6 h-6 rounded-xl border-4 border-slate-100" />}</button>
-                                                                            <span className={`text-sm font-bold ${ck.checked ? 'line-through text-slate-300' : 'text-slate-700'}`}>{sub.text}</span>
+                                                                            {editingId === sub.id ? (
+                                                                                <input autoFocus className="flex-1 text-sm font-bold neo-input py-1" value={sub.text} onChange={e => setRoutines(routines.map(rt => rt.id === r.id ? {...rt, subTasks: rt.subTasks.map(st => st.id === sub.id ? {...st, text: e.target.value} : st)} : rt))} onBlur={() => setEditingId(null)} />
+                                                                            ) : (
+                                                                                <span className={`text-sm font-bold ${ck.checked ? 'line-through text-slate-300' : 'text-slate-700'}`}>{sub.text}</span>
+                                                                            )}
                                                                             {ck.checked && <button onClick={() => toggleMemoInput(memoKey)} className={`p-1.5 rounded-lg ${isMemoOpen ? 'bg-slate-900 text-white' : 'text-[#FF69B4]'}`}><Icon name="PenTool" size={14}/></button>}
                                                                         </div>
-                                                                        <button onClick={() => setRoutines(routines.map(rt => rt.id === r.id ? {...rt, subTasks: rt.subTasks.filter(s => s.id !== sub.id)} : rt))} className="opacity-0 group-hover:opacity-100 text-slate-200"><Icon name="X" size={14}/></button>
+                                                                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                            <button onClick={() => setEditingId(sub.id)} className="text-slate-200 hover:text-blue-400"><Icon name="Edit3" size={14}/></button>
+                                                                            <button onClick={() => setRoutines(routines.map(rt => rt.id === r.id ? {...rt, subTasks: rt.subTasks.filter(s => s.id !== sub.id)} : rt))} className="text-slate-200 hover:text-red-400"><Icon name="X" size={14}/></button>
+                                                                        </div>
                                                                     </div>
                                                                     {ck.checked && isMemoOpen && (
                                                                         <div className="ml-9 animate-in slide-in-from-top-2"><div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border-2 border-slate-900 shadow-[3px_3px_0_0_#FF69B4]"><input type="text" placeholder="메모 입력..." className="flex-1 bg-transparent text-[11px] font-bold text-slate-500 outline-none" value={ck.detail || ""} onChange={(e) => updateDayData({ routineChecks: { ...currentDay.routineChecks, [memoKey]: { ...ck, detail: e.target.value } } })} /></div></div>
@@ -225,46 +232,28 @@
                                             ))}
                                         </section>
                                     ))}
-                                    <div className="neo-card p-6 border-dashed bg-[#F8FAFC]">
-                                        <div className="flex gap-2 mb-3">{['daily', 'weekly', 'monthly'].map(t => (<button key={t} onClick={() => setNewRoutineType(t)} className={`flex-1 py-1.5 rounded-xl text-[9px] font-black uppercase border-2 transition-all ${newRoutineType === t ? 'bg-[#FF69B4] text-white border-slate-900' : 'bg-white text-slate-400'}`}>{t}</button>))}</div>
-                                        <div className="flex gap-2"><input type="text" id="newroutine" placeholder="새로운 루틴..." className="flex-1 neo-input text-sm" value={newRoutineText} onChange={e => setNewRoutineText(e.target.value)} /><button onClick={() => { if(!newRoutineText) return; setRoutines([...routines, { id: Date.now(), text: newRoutineText, type: newRoutineType, subTasks: [] }]); setNewRoutineText(''); gainXp(10); }} className="bg-[#ADFF2F] border-2 border-slate-900 p-3 rounded-2xl active-bounce shadow-[3px_3px_0 0 black]"><Icon name="Plus" size={20}/></button></div>
-                                    </div>
                                 </div>
-                                <section className="pt-4 pb-20"><h3 className="text-xs font-black uppercase tracking-widest text-red-400 ml-4 mb-3 flex items-center gap-2"><Icon name="Ban" size={14}/> 포기할 행동</h3><div className="grid grid-cols-1 gap-2">{notToDo.map((nt, idx) => (<div key={idx} className="bg-white border-2 border-slate-900 p-4 rounded-2xl flex justify-between items-center shadow-[3px_3px_0px_0px_black]"><span className="text-[11px] font-bold text-slate-700">{nt}</span><button onClick={() => setNotToDo(notToDo.filter((_, i) => i !== idx))} className="text-slate-300 hover:text-red-400"><Icon name="X" size={16}/></button></div>))}<div className="flex gap-2 pt-2"><input type="text" id="ntin" placeholder="그만둘 습관..." className="flex-1 neo-input text-xs" /><button onClick={() => { const inp = document.getElementById('ntin'); if(!inp.value) return; setNotToDo([...notToDo, inp.value]); inp.value = ''; }} className="bg-red-400 p-2.5 rounded-xl border-2 border-slate-900 text-white active-bounce"><Icon name="Plus" size={18}/></button></div></div></section>
                             </div>
                         )}
 
                         {activeTab === 'archive' && (
                             <div className="py-6 space-y-6 animate-in zoom-in">
-                                <div className="neo-card p-10 bg-white text-center">
-                                    <Icon name="Library" size={56} className="text-[#ADFF2F] mb-4 mx-auto" />
-                                    <h2 className="text-3xl font-pop text-[#0F172A] uppercase leading-none italic">기록소</h2>
-                                    <div className="flex gap-3 justify-center mt-6">
-                                        <button onClick={handleExport} className="bg-[#ADFF2F] border-2 border-slate-900 px-4 py-2 rounded-xl text-[10px] font-black uppercase active-bounce shadow-[2px_2px_0_0_black]">백업</button>
-                                        <label className="bg-white border-2 border-slate-900 px-4 py-2 rounded-xl text-[10px] font-black uppercase active-bounce shadow-[2px_2px_0_0_black] cursor-pointer">불러오기<input type="file" className="hidden" accept=".json" onChange={handleImport} /></label>
-                                    </div>
+                                <div className="neo-card p-10 bg-white text-center"><Icon name="Library" size={56} className="text-[#ADFF2F] mb-4 mx-auto" /><h2 className="text-3xl font-pop text-[#0F172A] uppercase leading-none italic">기록소</h2>
+                                <div className="flex gap-3 justify-center mt-6">
+                                    <button onClick={handleExport} className="bg-[#ADFF2F] border-2 border-slate-900 px-4 py-2 rounded-xl text-[10px] font-black uppercase active-bounce shadow-[2px_2px_0_0_black]">백업</button>
+                                    <label className="bg-white border-2 border-slate-900 px-4 py-2 rounded-xl text-[10px] font-black uppercase active-bounce shadow-[2px_2px_0_0_black] cursor-pointer">불러오기<input type="file" className="hidden" accept=".json" onChange={handleImport} /></label>
+                                </div>
                                 </div>
                                 <div className="space-y-8">
-                                    {archiveDates.length > 0 ? archiveDates.map(date => {
+                                    {archiveDates.map(date => {
                                         const archive = getArchiveLog(date);
                                         return (
                                             <div key={date} className="neo-card p-6 bg-white relative overflow-hidden animate-in slide-in-from-bottom-2">
                                                 <div className="flex justify-between items-center mb-6 border-b-4 border-[#F1F5F9] pb-3"><span className="font-pop text-lg text-[#FF69B4] italic uppercase">{date}</span><Icon name={archive.type === 'OFF' ? "Coffee" : "Award"} size={22} color={archive.type === 'OFF' ? "#94A3B8" : "#ADFF2F"} /></div>
-                                                {archive.type === 'OFF' ? (<div className="p-6 bg-slate-100 rounded-3xl border-4 border-slate-900 border-dashed text-center font-black text-slate-400 italic">-- ROUTINE OFF: {archive.reason || '휴식'} --</div>) : (
-                                                    <div className="space-y-4">
-                                                        {archive.logs.map((log, i) => (
-                                                            <div key={i} className="bg-slate-50/50 p-3 rounded-2xl border border-slate-100 flex flex-col gap-1"><div className="flex items-center gap-2 font-black"><div className="w-1.5 h-1.5 bg-[#ADFF2F] rounded-full" /><span className="text-[10px] text-[#FF69B4] italic uppercase tracking-tighter">{log.category}</span><span className="text-xs text-slate-800">{log.task}</span></div>{log.detail && <div className="ml-3 pl-4 border-l-4 border-[#FF69B4] text-[11px] font-bold text-slate-500 italic">{log.detail}</div>}</div>
-                                                        ))}
-                                                    </div>
-                                                )}
+                                                <div className="space-y-4">{archive.logs.map((log, i) => (<div key={i} className="bg-slate-50/50 p-3 rounded-2xl border border-slate-100 flex flex-col gap-1"><div className="flex items-center gap-2 font-black"><div className="w-1.5 h-1.5 bg-[#ADFF2F] rounded-full" /><span className="text-[10px] text-[#FF69B4] italic uppercase tracking-tighter">{log.category}</span><span className="text-xs text-slate-800">{log.task}</span></div>{log.detail && <div className="ml-3 pl-4 border-l-4 border-[#FF69B4] text-[11px] font-bold text-slate-500 italic">{log.detail}</div>}</div>))}</div>
                                             </div>
                                         );
-                                    }) : (
-                                        <div className="text-center py-20 opacity-20 flex flex-col items-center gap-4">
-                                            <Icon name="Inbox" size={60} />
-                                            <p className="font-black uppercase tracking-widest text-xs">아직 기록된 루틴이 없습니다.</p>
-                                        </div>
-                                    )}
+                                    })}
                                 </div>
                             </div>
                         )}
@@ -273,7 +262,25 @@
                             <div className="py-4 space-y-10 animate-in slide-in-from-right-4">
                                 <section className="neo-card p-6 bg-[#E1F5FE]">
                                     <h3 className="text-md font-pop uppercase italic text-[#0288D1] mb-6 flex items-center gap-3"><Icon name="PlayCircle" size={24}/> 링크 보관함</h3>
-                                    <div className="space-y-4 mb-8">{workoutLinks.map(link => (<div key={link.id} className="bg-white p-4 rounded-3xl border-2 border-slate-900 flex items-center justify-between shadow-[5px_5px_0 0 black]"><p className="text-xs font-black truncate flex-1 pr-4 text-slate-700">{link.title}</p><div className="flex gap-3 shrink-0"><a href={link.url} target="_blank" rel="noopener noreferrer" className="w-10 h-10 bg-[#0288D1] border-2 border-slate-900 rounded-full flex items-center justify-center text-white active-bounce"><Icon name="PlayCircle" size={20}/></a><button onClick={() => setWorkoutLinks(workoutLinks.filter(x => x.id !== link.id))} className="text-slate-300 hover:text-red-500"><Icon name="Trash2" size={20}/></button></div></div>))}</div>
+                                    <div className="space-y-4 mb-8">{workoutLinks.map(link => (
+                                        <div key={link.id} className="bg-white p-4 rounded-3xl border-2 border-slate-900 flex items-center justify-between shadow-[5px_5px_0 0 black]">
+                                            <div className="flex flex-col flex-1 truncate pr-4">
+                                                {editingId === link.id ? (
+                                                    <div className="space-y-2">
+                                                        <input autoFocus className="w-full text-xs font-black neo-input py-1" value={link.title} onChange={e => setWorkoutLinks(workoutLinks.map(l => l.id === link.id ? {...l, title: e.target.value} : l))} />
+                                                        <input className="w-full text-[10px] neo-input py-1" value={link.url} onChange={e => setWorkoutLinks(workoutLinks.map(l => l.id === link.id ? {...l, url: e.target.value} : l))} onBlur={() => setEditingId(null)} />
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-xs font-black truncate">{link.title}</p>
+                                                )}
+                                            </div>
+                                            <div className="flex gap-2 shrink-0">
+                                                <button onClick={() => setEditingId(editingId === link.id ? null : link.id)} className="text-slate-300 hover:text-blue-400"><Icon name="Edit3" size={18}/></button>
+                                                <a href={link.url} target="_blank" rel="noopener noreferrer" className="w-10 h-10 bg-[#0288D1] border-2 border-slate-900 rounded-full flex items-center justify-center text-white active-bounce"><Icon name="PlayCircle" size={20}/></a>
+                                                <button onClick={() => setWorkoutLinks(workoutLinks.filter(x => x.id !== link.id))} className="text-slate-300 hover:text-red-500"><Icon name="Trash2" size={20}/></button>
+                                            </div>
+                                        </div>
+                                    ))}</div>
                                     <div className="space-y-3 p-5 bg-white/60 rounded-[2rem] border-4 border-slate-900 border-dashed shadow-inner"><input type="text" id="lt" placeholder="제목..." className="w-full neo-input text-xs" /><div className="flex gap-3"><input type="text" id="lu" placeholder="URL..." className="flex-1 neo-input text-xs" /><button onClick={() => { const t = document.getElementById('lt'); const u = document.getElementById('lu'); if(!t.value || !u.value) return; setWorkoutLinks([...workoutLinks, {id: Date.now(), title: t.value, url: u.value}]); t.value=''; u.value=''; }} className="bg-[#0288D1] p-3 rounded-2xl border-2 border-slate-900 text-white active-bounce shadow-[3px_3px_0 0 black]"><Icon name="Plus" size={20}/></button></div></div>
                                 </section>
                             </div>
@@ -283,17 +290,22 @@
                             <div className="py-4 space-y-8 animate-in slide-in-from-left-4">
                                 <section className="neo-card p-8 bg-white min-h-[400px] flex flex-col">
                                     <h3 className="text-md font-pop uppercase italic text-blue-500 mb-8 flex items-center gap-3"><Icon name="CheckSquare" size={24}/> 누적 투두 리스트</h3>
-                                    <div className="space-y-5 mb-8 flex-1">
-                                        {sortedTodos.map(todo => (
-                                            <div key={todo.id} className="flex items-center justify-between group animate-in fade-in slide-in-from-right-2">
-                                                <div className="flex items-center gap-4 flex-1">
-                                                    <button onClick={() => { const updated = globalTodos.map(t => t.id === todo.id ? { ...t, completed: !t.completed } : t); if (!todo.completed) gainXp(15); setGlobalTodos(updated); }} className={`active-bounce transition-all ${todo.completed ? 'text-blue-500' : 'text-slate-200'}`}>{todo.completed ? <Icon name="CheckCircle" size={36} /> : <div className="w-8 h-8 rounded-2xl border-4 border-slate-100" />}</button>
+                                    <div className="space-y-5 mb-8 flex-1">{sortedTodos.map(todo => (
+                                        <div key={todo.id} className="flex items-center justify-between group animate-in fade-in slide-in-from-right-2">
+                                            <div className="flex items-center gap-4 flex-1">
+                                                <button onClick={() => { const updated = globalTodos.map(t => t.id === todo.id ? { ...t, completed: !t.completed } : t); if (!todo.completed) gainXp(15); setGlobalTodos(updated); }} className={`active-bounce transition-all ${todo.completed ? 'text-blue-500' : 'text-slate-200'}`}>{todo.completed ? <Icon name="CheckCircle" size={36} /> : <div className="w-8 h-8 rounded-2xl border-4 border-slate-100" />}</button>
+                                                {editingId === todo.id ? (
+                                                    <input autoFocus className="flex-1 text-sm font-black neo-input py-1" value={todo.text} onChange={e => setGlobalTodos(globalTodos.map(t => t.id === todo.id ? {...t, text: e.target.value} : t))} onBlur={() => setEditingId(null)} />
+                                                ) : (
                                                     <span className={`text-sm font-black flex-1 ${todo.completed ? 'line-through text-slate-300 italic' : 'text-slate-700 decoration-[#ADFF2F] decoration-4'}`}>{todo.text}</span>
-                                                </div>
-                                                <button onClick={() => setGlobalTodos(globalTodos.filter(t => t.id !== todo.id))} className="p-2 text-slate-100 hover:text-red-400 active-bounce transition-colors"><Icon name="Trash2" size={20}/></button>
+                                                )}
                                             </div>
-                                        ))}
-                                    </div>
+                                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button onClick={() => setEditingId(editingId === todo.id ? null : todo.id)} className="p-2 text-slate-200 hover:text-blue-400 active-bounce"><Icon name="Edit3" size={20}/></button>
+                                                <button onClick={() => setGlobalTodos(globalTodos.filter(t => t.id !== todo.id))} className="p-2 text-slate-100 hover:text-red-400 active-bounce"><Icon name="Trash2" size={20}/></button>
+                                            </div>
+                                        </div>
+                                    ))}</div>
                                     <div className="flex gap-2 p-3 bg-slate-50 rounded-2xl border-4 border-slate-900 shadow-inner sticky bottom-0"><input type="text" id="tdin" placeholder="할 일 추가..." className="flex-1 bg-transparent text-sm font-black px-2 outline-none text-slate-900" onKeyDown={e => { if(e.key === 'Enter' && e.target.value.trim()) { setGlobalTodos([...globalTodos, {id: Date.now(), text: e.target.value, completed: false}]); e.target.value = ''; } }} /><button onClick={() => { const inp = document.getElementById('tdin'); if(!inp.value.trim()) return; setGlobalTodos([...globalTodos, {id: Date.now(), text: inp.value, completed: false}]); inp.value = ''; }} className="bg-[#FFEB3B] border-2 border-slate-900 p-3 rounded-xl active-bounce shadow-[3px_3px_0 0 black]"><Icon name="Plus" size={26}/></button></div>
                                 </section>
                             </div>
