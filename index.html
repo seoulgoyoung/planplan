@@ -55,11 +55,17 @@
         const App = () => {
             const [activeTab, setActiveTab] = useState('routine');
             
-            // 날짜 자동 변경: 오늘 날짜를 기본값으로 설정
-            const getTodayStr = () => new Date().toISOString().split('T')[0];
-            const [selectedDate, setSelectedDate] = useState(getTodayStr());
+            // 🌟 [수정] 앱 실행 시 현재 날짜(YYYY-MM-DD)를 자동으로 가져와서 설정합니다.
+            const getTodayDate = () => {
+                const now = new Date();
+                const offset = now.getTimezoneOffset() * 60000;
+                const localISOTime = (new Date(now - offset)).toISOString().split('T')[0];
+                return localISOTime;
+            };
 
-            // --- 데이터 저장/로드 ---
+            const [selectedDate, setSelectedDate] = useState(getTodayDate());
+
+            // --- 데이터 로드/저장 로직 ---
             const load = (key, initial) => {
                 const saved = localStorage.getItem(key);
                 return saved ? JSON.parse(saved) : initial;
@@ -224,7 +230,7 @@
                                         <div className="flex gap-2"><input type="text" id="newroutine" placeholder="새로운 루틴..." className="flex-1 neo-input text-sm" value={newRoutineText} onChange={e => setNewRoutineText(e.target.value)} /><button onClick={() => { if(!newRoutineText) return; setRoutines([...routines, { id: Date.now(), text: newRoutineText, type: newRoutineType, subTasks: [] }]); setNewRoutineText(''); gainXp(10); }} className="bg-[#ADFF2F] border-2 border-slate-900 p-3 rounded-2xl active-bounce shadow-[3px_3px_0 0 black]"><Icon name="Plus" size={20}/></button></div>
                                     </div>
                                 </div>
-                                <section className="pt-4 pb-20"><h3 className="text-xs font-black uppercase tracking-widest text-red-400 ml-4 mb-3 flex items-center gap-2"><Icon name="Ban" size={14}/> 포기할 행동</h3><div className="grid grid-cols-1 gap-2">{notToDo.map((nt, idx) => (<div key={idx} className="bg-white border-2 border-slate-900 p-4 rounded-2xl flex justify-between items-center shadow-[3px_3px_0px_0px_black]"><span className="text-[11px] font-bold text-slate-700">{nt}</span><button onClick={() => setNotToDo(notToDo.filter((_, i) => i !== idx))} className="text-slate-200"><Icon name="X" size={16}/></button></div>))}<div className="flex gap-2 pt-2"><input type="text" id="ntin" placeholder="그만둘 습관..." className="flex-1 neo-input text-xs" /><button onClick={() => { const inp = document.getElementById('ntin'); if(!inp.value) return; setNotToDo([...notToDo, inp.value]); inp.value = ''; }} className="bg-red-400 p-2.5 rounded-xl border-2 border-slate-900 text-white active-bounce"><Icon name="Plus" size={18}/></button></div></div></section>
+                                <section className="pt-4 pb-20"><h3 className="text-xs font-black uppercase tracking-widest text-red-400 ml-4 mb-3 flex items-center gap-2"><Icon name="Ban" size={14}/> 포기할 행동</h3><div className="grid grid-cols-1 gap-2">{notToDo.map((nt, idx) => (<div key={idx} className="bg-white border-2 border-slate-900 p-4 rounded-2xl flex justify-between items-center shadow-[3px_3px_0px_0px_black]"><span className="text-[11px] font-bold text-slate-700">{nt}</span><button onClick={() => setNotToDo(notToDo.filter((_, i) => i !== idx))} className="text-slate-300 hover:text-red-400"><Icon name="X" size={16}/></button></div>))}<div className="flex gap-2 pt-2"><input type="text" id="ntin" placeholder="그만둘 습관..." className="flex-1 neo-input text-xs" /><button onClick={() => { const inp = document.getElementById('ntin'); if(!inp.value) return; setNotToDo([...notToDo, inp.value]); inp.value = ''; }} className="bg-red-400 p-2.5 rounded-xl border-2 border-slate-900 text-white active-bounce"><Icon name="Plus" size={18}/></button></div></div></section>
                             </div>
                         )}
 
@@ -284,7 +290,7 @@
                                                     <button onClick={() => { const updated = globalTodos.map(t => t.id === todo.id ? { ...t, completed: !t.completed } : t); if (!todo.completed) gainXp(15); setGlobalTodos(updated); }} className={`active-bounce transition-all ${todo.completed ? 'text-blue-500' : 'text-slate-200'}`}>{todo.completed ? <Icon name="CheckCircle" size={36} /> : <div className="w-8 h-8 rounded-2xl border-4 border-slate-100" />}</button>
                                                     <span className={`text-sm font-black flex-1 ${todo.completed ? 'line-through text-slate-300 italic' : 'text-slate-700 decoration-[#ADFF2F] decoration-4'}`}>{todo.text}</span>
                                                 </div>
-                                                <button onClick={() => setGlobalTodos(globalTodos.filter(t => t.id !== todo.id))} className="p-2 text-slate-100 hover:text-red-400 active-bounce"><Icon name="Trash2" size={20}/></button>
+                                                <button onClick={() => setGlobalTodos(globalTodos.filter(t => t.id !== todo.id))} className="p-2 text-slate-100 hover:text-red-400 active-bounce transition-colors"><Icon name="Trash2" size={20}/></button>
                                             </div>
                                         ))}
                                     </div>
